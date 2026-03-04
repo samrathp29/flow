@@ -1,0 +1,50 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+.env
+*.db
+qdrant/
+
+.venv/
+venv/
+.tox/
+.pytest_cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI / Development notes
+CLAUDE.md
+PRD.md
+TDD.md
+todo.md
+lessons.md
+skills/
+
+# Images/Logos
+*.webp
+*.svg
+*.png
+*.jpeg
+*.jpg
+
+# Sub-projects
+landing-page template/

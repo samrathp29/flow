@@ -1,0 +1,6 @@
+{"type":"event_msg","timestamp":"2025-03-04T10:00:00.000Z","payload":{"type":"user_message","message":"Deploy the API to staging"}}
+{"type":"response_item","timestamp":"2025-03-04T10:01:00.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"Deploying to staging now. I'll update the config first."}]}}
+{"type":"event_msg","timestamp":"2025-03-04T10:02:00.000Z","payload":{"type":"user_message","message":"Check the health endpoint after deploy"}}
+{"type":"response_item","timestamp":"2025-03-04T10:03:00.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"Health check passed. All services are running."}]}}
+{"type":"event_msg","timestamp":"2025-03-04T08:00:00.000Z","payload":{"type":"user_message","message":"Old message before window"}}
+{"type":"response_item","timestamp":"2025-03-04T10:04:00.000Z","payload":{"type":"message","role":"system","content":[{"type":"text","text":"System message to skip"}]}}
