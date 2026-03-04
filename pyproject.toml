@@ -17,3 +17,6 @@ dependencies = [
 
 [project.scripts]
 flow = "flow.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["flow*"]
