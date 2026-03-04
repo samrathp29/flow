@@ -20,7 +20,9 @@ Capture only:
 - The next concrete step
 
 Ignore: general chatter, tool usage logs, code explanations that \
-don't involve a decision, dependency management, formatting."""
+don't involve a decision, dependency management, formatting.
+
+Return the extracted facts as a json object."""
 
 
 class FlowMemory:
@@ -28,6 +30,16 @@ class FlowMemory:
 
     def __init__(self, config: FlowConfig):
         self.data_dir = config.data_dir
+        embedder_config = {
+            "provider": "openai",
+            "config": {
+                "model": "text-embedding-3-small",
+            },
+        }
+        # Pass the API key to the embedder when using OpenAI as the LLM provider
+        if config.llm_provider == "openai":
+            embedder_config["config"]["api_key"] = config.api_key
+
         mem0_config = {
             "llm": {
                 "provider": config.llm_provider,
@@ -37,6 +49,7 @@ class FlowMemory:
                     "temperature": 0.1,
                 },
             },
+            "embedder": embedder_config,
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
