@@ -11,7 +11,7 @@ export function Navbar() {
         <span className="font-sans text-xl font-black uppercase tracking-tighter text-foreground">Flow</span>
       </Link>
       <div className="flex items-center gap-6">
-        <Link href="https://github.com" className="font-mono text-sm uppercase tracking-widest text-foreground hover:text-primary transition-colors hover:underline underline-offset-4 border-2 border-transparent px-2 py-1 hover:border-border">
+        <Link href="https://github.com/samrathp29/flow" target="_blank" rel="noopener noreferrer" className="font-mono text-sm uppercase tracking-widest text-foreground hover:text-primary transition-colors hover:underline underline-offset-4 border-2 border-transparent px-2 py-1 hover:border-border">
           GitHub
         </Link>
       </div>

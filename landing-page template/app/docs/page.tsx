@@ -1,7 +1,8 @@
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { ScrollReveal } from "@/components/scroll-reveal"
-import { Terminal } from "lucide-react"
+import { Terminal, ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 export default function DocsPage() {
     return (
@@ -11,6 +12,10 @@ export default function DocsPage() {
             <main className="flex-1 mt-20 md:mt-24 px-6 md:px-12 py-12 pb-32 max-w-4xl mx-auto w-full">
                 <ScrollReveal delay={100}>
                     <div className="mb-12 border-b-4 border-primary pb-8">
+                        <Link href="/" className="inline-flex items-center gap-2 mb-8 font-mono text-sm uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors">
+                            <ArrowLeft className="h-4 w-4" />
+                            Back to Home
+                        </Link>
                         <h1 className="font-sans text-5xl md:text-7xl font-black uppercase tracking-tighter mb-6">
                             Documentation
                         </h1>

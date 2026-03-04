@@ -23,7 +23,7 @@ export function HeroSection() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 items-center animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both delay-500">
-          <Link href="https://github.com" className="flex items-center gap-2 bg-primary px-8 py-4 font-mono text-sm font-bold text-primary-foreground uppercase tracking-widest hover:bg-primary/90 transition-none border-2 border-primary hover:translate-y-1 hover:translate-x-1 active:translate-y-0 active:translate-x-0">
+          <Link href="https://github.com/samrathp29/flow" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-primary px-8 py-4 font-mono text-sm font-bold text-primary-foreground uppercase tracking-widest hover:bg-primary/90 transition-none border-2 border-primary hover:translate-y-1 hover:translate-x-1 active:translate-y-0 active:translate-x-0">
             flow start
           </Link>
           <Link href="/docs" className="flex items-center gap-2 bg-transparent px-8 py-4 font-mono text-sm font-bold text-foreground uppercase tracking-widest hover:bg-secondary transition-none border-2 border-border">

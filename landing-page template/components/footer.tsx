@@ -21,7 +21,7 @@ export function Footer() {
           <Link href="/docs" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors hover:underline">
             Docs
           </Link>
-          <Link href="https://github.com" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors hover:underline">
+          <Link href="https://github.com/samrathp29/flow" target="_blank" rel="noopener noreferrer" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors hover:underline">
             GitHub
           </Link>
         </div>
