@@ -22,7 +22,8 @@ Capture only:
 Ignore: general chatter, tool usage logs, code explanations that \
 don't involve a decision, dependency management, formatting.
 
-Return the extracted facts as a json object."""
+Return a json object with a single key "facts" containing a list of short fact strings.
+Example: {"facts": ["Was building a REST API for user auth", "Next step is adding JWT token refresh"]}"""
 
 
 class FlowMemory:
@@ -55,6 +56,7 @@ class FlowMemory:
                 "config": {
                     "collection_name": "flow_sessions",
                     "path": str(config.data_dir / "mem0" / "qdrant"),
+                    "on_disk": True,
                 },
             },
             "custom_fact_extraction_prompt": EXTRACTION_PROMPT,
@@ -88,6 +90,13 @@ class FlowMemory:
         except Exception:
             logger.warning("mem0 search failed", exc_info=True)
             return []
+
+    def close(self) -> None:
+        """Close the underlying vector store client to flush data to disk."""
+        try:
+            self.memory.vector_store.client.close()
+        except Exception:
+            logger.warning("Failed to close vector store client", exc_info=True)
 
     def _write_fallback(self, distilled: str, project_name: str) -> None:
         """Write distilled text to failed/ directory for manual recovery."""
