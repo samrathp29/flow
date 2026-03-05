@@ -91,6 +91,19 @@ class FlowMemory:
             logger.warning("mem0 search failed", exc_info=True)
             return []
 
+    def search_all_projects(self, query: str, limit: int = 10) -> list[dict]:
+        """Search memories across all projects. Returns list of result dicts."""
+        try:
+            results = self.memory.search(
+                query=query,
+                user_id="flow",
+                limit=limit,
+            )
+            return results.get("results", [])
+        except Exception:
+            logger.warning("mem0 cross-project search failed", exc_info=True)
+            return []
+
     def close(self) -> None:
         """Close the underlying vector store client to flush data to disk."""
         try:

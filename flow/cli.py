@@ -24,6 +24,30 @@ def start():
         sys.exit(1)
     click.echo(f"▶ Session started — watching {state.project_name}")
 
+    # Proactive context injection: query mem0, format for AI agent, write context files.
+    # Graceful — never blocks or fails the session start.
+    from flow.config import ConfigNotFound, FlowConfig
+
+    try:
+        config = FlowConfig.load()
+    except ConfigNotFound:
+        return
+
+    try:
+        from flow.context import ContextInjector
+
+        injector = ContextInjector(config)
+        written = injector.inject(state.project_name, state.project_path)
+        injector.close()
+        if written:
+            click.echo(f"⟳ Context injected into {', '.join(written)}")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Context injection failed", exc_info=True
+        )
+
 
 @cli.command()
 def stop():
@@ -71,6 +95,7 @@ def stop():
     try:
         mem = FlowMemory(config)
         mem.add(distilled, data.project_name, metadata)
+        mem.close()
     except Exception:
         # mem0 init or add failed — write distilled text to fallback directory
         from pathlib import Path
@@ -108,9 +133,32 @@ def wake():
 
     retriever = Retriever(config)
     briefing = retriever.wake(name, path)
+    retriever.flow_memory.close()
 
     click.echo(f"\n⚡ {name}\n")
     click.echo(briefing)
+
+
+@cli.command()
+@click.argument("question")
+def ask(question):
+    """Ask a question across all your projects."""
+    from flow.config import ConfigNotFound, FlowConfig
+    from flow.retriever import Retriever
+
+    try:
+        config = FlowConfig.load()
+    except ConfigNotFound as e:
+        click.echo(f"✗ {e}", err=True)
+        sys.exit(1)
+
+    retriever = Retriever(config)
+    memories = retriever.flow_memory.search_all_projects(question, limit=10)
+    answer = retriever.synthesize(question, memories)
+    retriever.flow_memory.close()
+
+    click.echo(f"\n🔍 {question}\n")
+    click.echo(answer)
 
 
 DEFAULT_MODELS = {

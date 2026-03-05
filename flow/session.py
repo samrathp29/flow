@@ -14,6 +14,7 @@ class SessionState:
     project_path: str       # absolute git root path
     started_at: str         # ISO-8601 timestamp
     pid: int                # flow process PID (for stale state detection)
+    base_commit: str = ""   # HEAD commit hash when session started
 
 
 @dataclass
@@ -88,11 +89,15 @@ class SessionManager:
                     f"(started {existing.started_at}). Run `flow stop` first."
                 )
 
+        # Capture HEAD hash as the baseline for diffing at stop time
+        base_commit = self._get_head(path)
+
         state = SessionState(
             project_name=name,
             project_path=path,
             started_at=datetime.now(timezone.utc).isoformat(),
             pid=os.getpid(),
+            base_commit=base_commit,
         )
 
         self.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +106,7 @@ class SessionManager:
             "project_path": state.project_path,
             "started_at": state.started_at,
             "pid": state.pid,
+            "base_commit": state.base_commit,
         }))
 
         return state
@@ -112,3 +118,15 @@ class SessionManager:
             raise SessionError("No active session. Run `flow start` first.")
         self.STATE_PATH.unlink()
         return state
+
+    @staticmethod
+    def _get_head(project_path: str) -> str:
+        """Return current HEAD commit hash, or empty string for new repos."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, cwd=project_path,
+            )
+            return result.stdout.strip() if result.returncode == 0 else ""
+        except Exception:
+            return ""

@@ -45,27 +45,45 @@ class Collector:
             ended_at=ended_at,
             duration_mins=duration_mins,
             turns=turns,
-            git_diff=self._git_diff(state.project_path),
-            git_log=self._git_log(state.project_path),
+            git_diff=self._git_diff(state.project_path, state.base_commit),
+            git_log=self._git_log(state.project_path, since=state.started_at),
         )
 
-    def _git_diff(self, project_path: str) -> str:
-        """Run git diff and return the output."""
+    def _git_diff(self, project_path: str, base_commit: str) -> str:
+        """Diff all changes made during the session (committed + uncommitted)."""
         try:
-            result = subprocess.run(
-                ["git", "diff"],
-                capture_output=True, text=True, cwd=project_path,
-            )
+            if base_commit:
+                # Diff from the commit at session start to current working tree
+                result = subprocess.run(
+                    ["git", "diff", base_commit],
+                    capture_output=True, text=True, cwd=project_path,
+                )
+            else:
+                # No base commit (brand new repo) -- diff against the empty tree
+                result = subprocess.run(
+                    ["git", "diff", "4b825dc642cb6eb9a060e54bf899d8b965cf8e6f", "HEAD"],
+                    capture_output=True, text=True, cwd=project_path,
+                )
+                # Also include any staged but uncommitted changes
+                staged = subprocess.run(
+                    ["git", "diff", "--cached"],
+                    capture_output=True, text=True, cwd=project_path,
+                )
+                if staged.stdout.strip():
+                    return (result.stdout.strip() + "\n" + staged.stdout.strip()).strip()
             return result.stdout.strip()
         except Exception:
             logger.warning("git diff failed", exc_info=True)
             return ""
 
-    def _git_log(self, project_path: str, limit: int = 10) -> str:
-        """Run git log --oneline and return the output."""
+    def _git_log(self, project_path: str, limit: int = 10, since: str = "") -> str:
+        """Run git log --oneline filtered to the session window."""
         try:
+            cmd = ["git", "log", "--oneline", f"-n{limit}"]
+            if since:
+                cmd.append(f"--since={since}")
             result = subprocess.run(
-                ["git", "log", "--oneline", f"-n{limit}"],
+                cmd,
                 capture_output=True, text=True, cwd=project_path,
             )
             return result.stdout.strip()

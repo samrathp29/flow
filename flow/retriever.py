@@ -10,6 +10,18 @@ from flow.memory import FlowMemory
 
 logger = logging.getLogger(__name__)
 
+SYNTHESIS_PROMPT = """\
+You are answering a developer's question using only memories from their
+own past projects. Each memory is tagged with a project name and date.
+
+Answer the question by synthesizing what the developer actually did and
+decided across their projects — not general best practice. Be specific
+about which project, when, and what the outcome was. Where their approach
+evolved across projects, note that evolution explicitly.
+
+If the memories don't contain a relevant answer, say so directly.
+Do not speculate beyond what the memories contain."""
+
 BRIEFING_PROMPT = """\
 A developer is returning to a project after {days_away} days.
 Write a 3-5 sentence briefing in second person that tells them:
@@ -27,6 +39,26 @@ class Retriever:
     def __init__(self, config: FlowConfig):
         self.flow_memory = FlowMemory(config)
         self.llm = LLM(config)
+
+    def synthesize(self, query: str, memories: list[dict]) -> str:
+        """Synthesize an answer from cross-project memories."""
+        if not memories:
+            return "No relevant memories found across your projects."
+
+        context_lines = []
+        for m in memories:
+            project = m.get("agent_id", "unknown")
+            date = m.get("metadata", {}).get("session_date", "unknown date")
+            context_lines.append(f"- [{project}, {date}] {m['memory']}")
+        context = "\n".join(context_lines)
+
+        user_content = f"Question: {query}\n\nMemories:\n{context}"
+
+        try:
+            return self.llm.call(SYNTHESIS_PROMPT, user_content)
+        except LLMError:
+            logger.warning("LLM synthesis failed, returning raw memories", exc_info=True)
+            return "Relevant memories:\n" + context
 
     def wake(self, project_name: str, project_path: str) -> str:
         """Generate a wake briefing for the given project."""

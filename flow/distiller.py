@@ -30,7 +30,7 @@ class Distiller:
 
     def distill(self, data: RawSessionData) -> str:
         """Distill session data into a single paragraph via LLM."""
-        if not data.turns and not data.git_diff:
+        if not data.turns and not data.git_diff and not data.git_log:
             return (
                 f"Session of {data.duration_mins} minutes with no recorded "
                 "AI activity or file changes."

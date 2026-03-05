@@ -58,6 +58,55 @@ class TestStartCommand:
         assert result.exit_code == 1
         assert "✗" in result.output
 
+    def test_start_injects_context(self, runner, tmp_state, mock_detect):
+        mock_config = MagicMock()
+        mock_injector = MagicMock()
+        mock_injector.inject.return_value = ["CLAUDE.md"]
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.context.ContextInjector", return_value=mock_injector):
+            result = runner.invoke(cli, ["start"])
+
+        assert result.exit_code == 0
+        assert "▶ Session started" in result.output
+        assert "Context injected into CLAUDE.md" in result.output
+        mock_injector.inject.assert_called_once()
+        mock_injector.close.assert_called_once()
+
+    def test_start_silent_when_no_config(self, runner, tmp_state, mock_detect):
+        with patch(
+            "flow.config.FlowConfig.load",
+            side_effect=__import__("flow.config", fromlist=["ConfigNotFound"]).ConfigNotFound(),
+        ):
+            result = runner.invoke(cli, ["start"])
+
+        assert result.exit_code == 0
+        assert "▶ Session started" in result.output
+        assert "Context injected" not in result.output
+
+    def test_start_silent_when_no_memories(self, runner, tmp_state, mock_detect):
+        mock_config = MagicMock()
+        mock_injector = MagicMock()
+        mock_injector.inject.return_value = []
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.context.ContextInjector", return_value=mock_injector):
+            result = runner.invoke(cli, ["start"])
+
+        assert result.exit_code == 0
+        assert "▶ Session started" in result.output
+        assert "Context injected" not in result.output
+
+    def test_start_survives_injector_crash(self, runner, tmp_state, mock_detect):
+        mock_config = MagicMock()
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.context.ContextInjector", side_effect=RuntimeError("boom")):
+            result = runner.invoke(cli, ["start"])
+
+        assert result.exit_code == 0
+        assert "▶ Session started" in result.output
+
 
 # ---------- flow stop ----------
 
@@ -134,3 +183,51 @@ class TestWakeCommand:
         assert result.exit_code == 0
         assert "⚡ test-project" in result.output
         assert "You were working on auth flow." in result.output
+
+
+# ---------- flow ask ----------
+
+
+class TestAskCommand:
+    def test_ask_success(self, runner):
+        mock_config = MagicMock()
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.flow_memory.search_all_projects.return_value = [
+            {"memory": "Built JWT auth", "agent_id": "auth-service", "metadata": {"session_date": "2025-07-01"}},
+        ]
+        mock_retriever_instance.synthesize.return_value = "In auth-service you implemented JWT auth."
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.retriever.Retriever", return_value=mock_retriever_instance):
+            result = runner.invoke(cli, ["ask", "how did I handle auth?"])
+
+        assert result.exit_code == 0
+        assert "how did I handle auth?" in result.output
+        assert "In auth-service you implemented JWT auth." in result.output
+        mock_retriever_instance.flow_memory.search_all_projects.assert_called_once_with(
+            "how did I handle auth?", limit=10,
+        )
+        mock_retriever_instance.flow_memory.close.assert_called_once()
+
+    def test_ask_no_config(self, runner):
+        with patch(
+            "flow.config.FlowConfig.load",
+            side_effect=__import__("flow.config", fromlist=["ConfigNotFound"]).ConfigNotFound(),
+        ):
+            result = runner.invoke(cli, ["ask", "anything"])
+
+        assert result.exit_code == 1
+        assert "✗" in result.output
+
+    def test_ask_no_memories(self, runner):
+        mock_config = MagicMock()
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.flow_memory.search_all_projects.return_value = []
+        mock_retriever_instance.synthesize.return_value = "No relevant memories found across your projects."
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.retriever.Retriever", return_value=mock_retriever_instance):
+            result = runner.invoke(cli, ["ask", "anything"])
+
+        assert result.exit_code == 0
+        assert "No relevant memories" in result.output
