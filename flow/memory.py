@@ -7,23 +7,39 @@ from pathlib import Path
 from mem0 import Memory
 
 from flow.config import FlowConfig
+from flow.session import MessageChunk
 
 logger = logging.getLogger(__name__)
 
 EXTRACTION_PROMPT = """\
-Extract facts a developer would need to re-enter a project after weeks away.
-Capture only:
-- What was actively being built or changed
-- Architectural or implementation decisions made (and why, if stated)
-- Bugs or approaches that were tried and failed
-- Open questions, blockers, or unresolved decisions
-- The next concrete step
+You are extracting developer re-entry facts from a raw coding session \
+conversation between a developer and an AI assistant.
 
-Ignore: general chatter, tool usage logs, code explanations that \
-don't involve a decision, dependency management, formatting.
+Extract ONLY facts that help the developer resume work after an extended absence:
+- What feature, bug fix, or refactor was actively being worked on
+- Architectural or implementation decisions made (include reasoning if stated)
+- Approaches tried that failed or were abandoned (and why)
+- Open questions, blockers, or unresolved technical issues
+- The next concrete step to take
+- Files or components that were the focus of changes
+
+STRICTLY IGNORE:
+- Code snippets, diffs, and implementation details (extract the decision, not the code)
+- AI explanations of how code works (unless a decision was made based on it)
+- Dependency installation, import errors, tool retries, build output
+- Formatting, linting, style discussions
+- General programming knowledge or best-practice explanations
+- File contents that were read or displayed
+- Tool invocations and their raw output
+
+When you see git diff information, extract WHAT changed and WHY, not the diff itself.
+When a decision was reversed during the session, only record the final state.
+Each fact should be a single concise sentence. Prefer specificity over breadth.
 
 Return a json object with a single key "facts" containing a list of short fact strings.
-Example: {"facts": ["Was building a REST API for user auth", "Next step is adding JWT token refresh"]}"""
+Example: {"facts": ["Switched from REST to GraphQL for the user API due to nested data requirements", \
+"JWT refresh endpoint is broken - returns 401 instead of new token", \
+"Next step: add rate limiting middleware to the /api/auth routes"]}"""
 
 
 class FlowMemory:
@@ -76,6 +92,48 @@ class FlowMemory:
         except Exception:
             logger.warning("mem0 add failed, writing to fallback", exc_info=True)
             self._write_fallback(distilled, project_name)
+
+    def add_chunks(
+        self,
+        chunks: list[MessageChunk],
+        project_name: str,
+        metadata: dict,
+    ) -> int:
+        """Store session chunks via mem0. Returns count of successfully stored chunks.
+
+        Continues processing remaining chunks if one fails.
+        Falls back to file on total failure.
+        """
+        success_count = 0
+        for chunk in chunks:
+            try:
+                self.memory.add(
+                    messages=chunk.messages,
+                    user_id="flow",
+                    agent_id=project_name,
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk.chunk_index,
+                        "total_chunks": chunk.total_chunks,
+                    },
+                )
+                success_count += 1
+            except Exception:
+                logger.warning(
+                    "mem0 add failed for chunk %d/%d",
+                    chunk.chunk_index + 1,
+                    chunk.total_chunks,
+                    exc_info=True,
+                )
+
+        if success_count == 0 and chunks:
+            combined = "\n\n---\n\n".join(
+                "\n".join(f"{m['role']}: {m['content']}" for m in c.messages)
+                for c in chunks
+            )
+            self._write_fallback(combined, project_name)
+
+        return success_count
 
     def search(self, project_name: str, query: str, limit: int = 5) -> list[str]:
         """Search memories for a project. Returns list of memory strings."""

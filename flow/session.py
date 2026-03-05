@@ -36,6 +36,15 @@ class RawSessionData:
     git_log: str = ""
 
 
+@dataclass
+class MessageChunk:
+    """A group of messages ready for mem0.add()."""
+
+    messages: list[dict] = field(default_factory=list)
+    chunk_index: int = 0
+    total_chunks: int = 1
+
+
 class SessionError(Exception):
     """Raised for session-related errors."""
 
@@ -96,7 +105,7 @@ class SessionManager:
             project_name=name,
             project_path=path,
             started_at=datetime.now(timezone.utc).isoformat(),
-            pid=os.getpid(),
+            pid=os.getppid(),
             base_commit=base_commit,
         )
 

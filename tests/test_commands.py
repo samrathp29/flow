@@ -141,18 +141,55 @@ class TestStopCommand:
 
         with patch("flow.config.FlowConfig.load", return_value=mock_config), \
              patch("flow.collector.Collector", return_value=mock_collector_instance), \
-             patch("flow.distiller.Distiller") as mock_distiller_cls, \
+             patch("flow.formatter.Formatter") as mock_formatter_cls, \
              patch("flow.memory.FlowMemory") as mock_memory_cls:
 
-            mock_distiller_cls.return_value.distill.return_value = "Distilled session text."
-            mock_memory_cls.return_value.add = MagicMock()
+            mock_formatter_cls.return_value.format.return_value = [
+                MagicMock(messages=[{"role": "user", "content": "test"}], chunk_index=0, total_chunks=1),
+            ]
+            mock_memory_cls.return_value.add_chunks.return_value = 1
 
             result = runner.invoke(cli, ["stop"])
 
         assert result.exit_code == 0
-        assert "⠿ Distilling session..." in result.output
+        assert "⠿ Processing session..." in result.output
         assert "✓ Session saved" in result.output
         assert "2h" in result.output
+
+    def test_stop_partial_chunk_failure(self, runner, tmp_state, mock_detect):
+        runner.invoke(cli, ["start"])
+
+        mock_config = MagicMock()
+        mock_config.data_dir = Path("/tmp/flow-test")
+
+        mock_collector_instance = MagicMock()
+        mock_collector_instance.collect.return_value = MagicMock(
+            project_name="test-project",
+            project_path="/fake/test-project",
+            started_at="2025-03-04T10:00:00+00:00",
+            ended_at="2025-03-04T12:00:00+00:00",
+            duration_mins=120,
+            turns=[],
+            git_diff="",
+            git_log="",
+        )
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.collector.Collector", return_value=mock_collector_instance), \
+             patch("flow.formatter.Formatter") as mock_formatter_cls, \
+             patch("flow.memory.FlowMemory") as mock_memory_cls:
+
+            mock_formatter_cls.return_value.format.return_value = [
+                MagicMock(messages=[{"role": "user", "content": "chunk1"}], chunk_index=0, total_chunks=3),
+                MagicMock(messages=[{"role": "user", "content": "chunk2"}], chunk_index=1, total_chunks=3),
+                MagicMock(messages=[{"role": "user", "content": "chunk3"}], chunk_index=2, total_chunks=3),
+            ]
+            mock_memory_cls.return_value.add_chunks.return_value = 1  # only 1 of 3 succeeded
+
+            result = runner.invoke(cli, ["stop"])
+
+        assert result.exit_code == 0
+        assert "2/3 chunks failed" in result.output
 
 
 # ---------- flow wake ----------

@@ -26,11 +26,10 @@ BRIEFING_PROMPT = """\
 A developer is returning to a project after {days_away} days.
 Write a 3-5 sentence briefing in second person that tells them:
 - What they were working on
-- What was unresolved or blocked
-- What to do first
+- What was unresolved or blocked (ONLY IF APPLICABLE)
+- What to do first (only if clear)
 
-Be direct. Use past tense for what was done, present tense for what's needed.
-No headers, no bullets. Sound like a knowledgeable colleague, not a status report."""
+Be direct. No headers, no bullets. Sound like a knowledgeable colleague, not a status report."""
 
 
 class Retriever:

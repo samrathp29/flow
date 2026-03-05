@@ -1,8 +1,12 @@
 """Click entrypoint for flow CLI."""
 
+import os
 import sys
+from pathlib import Path
 
 import click
+
+PID_FILE = ".flow.pid"
 
 from flow.session import SessionError, SessionManager
 
@@ -23,6 +27,10 @@ def start():
         click.echo(f"✗ {e}", err=True)
         sys.exit(1)
     click.echo(f"▶ Session started — watching {state.project_name}")
+
+    # Write PID file so the shell hook can show (flow) in the prompt
+    pid_path = Path(state.project_path) / PID_FILE
+    pid_path.write_text(str(os.getppid()))
 
     # Proactive context injection: query mem0, format for AI agent, write context files.
     # Graceful — never blocks or fails the session start.
@@ -51,11 +59,10 @@ def start():
 
 @cli.command()
 def stop():
-    """End the session, distill it, and store to memory."""
+    """End the session and store to memory."""
     from flow.collector import Collector
     from flow.config import ConfigNotFound, FlowConfig
-    from flow.distiller import Distiller
-    from flow.llm import LLMError
+    from flow.formatter import Formatter
     from flow.memory import FlowMemory
 
     sm = SessionManager()
@@ -71,7 +78,7 @@ def stop():
         click.echo(f"✗ {e}", err=True)
         sys.exit(1)
 
-    click.echo("⠿ Distilling session...")
+    click.echo("⠿ Processing session...")
 
     collector = Collector()
     data = collector.collect(state)
@@ -82,32 +89,36 @@ def stop():
         "duration_mins": data.duration_mins,
     }
 
-    try:
-        distilled = Distiller(config).distill(data)
-    except LLMError:
-        # LLM already retried once internally — store raw git log as fallback
-        distilled = (
-            f"Session of {data.duration_mins} minutes. "
-            f"LLM distillation failed. Raw git log:\n{data.git_log}"
-        )
-        click.echo("⚠ LLM distillation failed — saving raw git log as fallback", err=True)
+    # Format into chunks (no LLM call — pure formatting)
+    chunks = Formatter().format(data)
 
+    # Store via mem0 (mem0 handles fact extraction internally)
     try:
         mem = FlowMemory(config)
-        mem.add(distilled, data.project_name, metadata)
+        stored = mem.add_chunks(chunks, data.project_name, metadata)
         mem.close()
+        if stored < len(chunks):
+            click.echo(
+                f"⚠ {len(chunks) - stored}/{len(chunks)} chunks failed to store",
+                err=True,
+            )
     except Exception:
-        # mem0 init or add failed — write distilled text to fallback directory
-        from pathlib import Path
+        from datetime import datetime as _dt, timezone as _tz
 
         failed_dir = config.data_dir / "failed"
         failed_dir.mkdir(parents=True, exist_ok=True)
-        from datetime import datetime as _dt, timezone as _tz
-
         ts = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%S")
         fallback_path = failed_dir / f"{data.project_name}_{ts}.txt"
-        fallback_path.write_text(distilled)
-        click.echo(f"⚠ Memory storage failed — distilled text saved to {fallback_path}", err=True)
+        combined = "\n\n---\n\n".join(
+            "\n".join(f"{m['role']}: {m['content']}" for m in c.messages)
+            for c in chunks
+        )
+        fallback_path.write_text(combined)
+        click.echo(f"⚠ Memory storage failed — session saved to {fallback_path}", err=True)
+
+    # Remove PID file
+    pid_path = Path(state.project_path) / PID_FILE
+    pid_path.unlink(missing_ok=True)
 
     click.echo(f"✓ Session saved ({data.project_name} · {duration})")
 
@@ -170,8 +181,6 @@ DEFAULT_MODELS = {
 @cli.command()
 def init():
     """One-time setup: configure LLM provider and API key."""
-    from pathlib import Path
-
     config_path = Path.home() / ".config" / "flow" / "config.toml"
     data_dir = Path.home() / ".local" / "share" / "flow"
 
@@ -216,12 +225,47 @@ def init():
     click.echo(f"  Model:    {model}")
     click.echo(f"  Data dir: {data_dir}")
 
+    # Shell integration
+    _install_shell_hook()
+
     # Claude Code reminder
     click.echo(
         "\n💡 If you use Claude Code, add this to ~/.claude/settings.json "
         "to prevent log deletion:\n"
         '   "maxStorageAgeInDays": 999'
     )
+
+
+SHELL_HOOK_MARKER = "# flow shell integration"
+SHELL_HOOK = """\
+# flow shell integration
+_flow_prompt() {
+    if [[ -f .flow.pid ]] && kill -0 $(cat .flow.pid) 2>/dev/null; then
+        if [[ "$PROMPT" != *"(flow) "* ]]; then
+            PROMPT="(flow) $PROMPT"
+        fi
+    else
+        if [[ "$PROMPT" == *"(flow) "* ]]; then
+            PROMPT="${PROMPT//(flow) /}"
+        fi
+    fi
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _flow_prompt
+"""
+
+
+def _install_shell_hook():
+    """Append the flow prompt hook to ~/.zshrc if not already present."""
+    zshrc = Path.home() / ".zshrc"
+    if zshrc.exists() and SHELL_HOOK_MARKER in zshrc.read_text():
+        click.echo("\n✓ Shell integration already installed")
+        return
+
+    with zshrc.open("a") as f:
+        f.write("\n" + SHELL_HOOK)
+
+    click.echo("✓ Shell integration added to ~/.zshrc (restart terminal or run: source ~/.zshrc)")
 
 
 def _format_duration(minutes: int) -> str:
