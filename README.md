@@ -26,11 +26,15 @@ Flow operates alongside your normal git workflow.
 
 ### Start a Session
 
-Begin tracking a coding session in your current git repository.
+Begin tracking a coding session in your current git repository. If previous sessions exist, Flow automatically queries your project's memory and injects a compact context block into your AI tool's rules file — `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, `.cursorrules` for Cursor. The AI agent reads this on its first prompt and arrives with full project context: what's in progress, key decisions, dead ends to avoid, and what to do next.
 
 ```bash
 flow start
+# ▶ Session started — watching my-project
+# ⟳ Context injected into CLAUDE.md
 ```
+
+Developer-written content in existing rules files is never overwritten. Flow injects between `<!-- flow:start -->` / `<!-- flow:end -->` markers and replaces only that block on each start.
 
 ### Stop a Session
 
@@ -46,4 +50,12 @@ Get a situational briefing on what you were last working on in this project.
 
 ```bash
 flow wake
+```
+
+### Ask
+
+Ask a question across all your projects. Flow searches your entire memory store and synthesizes an answer from your own history.
+
+```bash
+flow ask "how did I handle auth?"
 ```
