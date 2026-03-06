@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 PROJECT_DIR = Path.home() / "Projects" / "flow-test"
-STATE_PATH = Path.home() / ".local" / "share" / "flow" / "state.json"
+STATE_DIR = Path.home() / ".local" / "share" / "flow" / "sessions"
 CONFIG_PATH = Path.home() / ".config" / "flow" / "config.toml"
 MARKER_START = "<!-- flow:start -->"
 MARKER_END = "<!-- flow:end -->"
@@ -51,7 +51,9 @@ def run_flow(*args, cwd=None):
 
 def cleanup():
     """Remove transient state so the test is idempotent."""
-    STATE_PATH.unlink(missing_ok=True)
+    import shutil
+    if STATE_DIR.exists():
+        shutil.rmtree(STATE_DIR, ignore_errors=True)
     (PROJECT_DIR / "CLAUDE.md").unlink(missing_ok=True)
     (PROJECT_DIR / "AGENTS.md").unlink(missing_ok=True)
     (PROJECT_DIR / ".cursorrules").unlink(missing_ok=True)
@@ -120,7 +122,9 @@ class TestFullDeveloperWorkflow:
         assert "▶ Session started" in out
         assert "flow-test" in out
         assert "Context injected" in out
-        assert STATE_PATH.exists(), "state.json not created"
+        assert STATE_DIR.exists(), "sessions directory not created"
+        state_files = list(STATE_DIR.glob("*.json"))
+        assert len(state_files) >= 1, "no state file created"
 
         # ─── Step 2: verify injected context quality ──────────────
         claude_md = PROJECT_DIR / "CLAUDE.md"
@@ -174,7 +178,8 @@ class TestFullDeveloperWorkflow:
         assert "⠿ Processing session..." in out
         assert "✓ Session saved" in out
         assert "flow-test" in out
-        assert not STATE_PATH.exists(), "state.json not cleaned up after stop"
+        state_files = list(STATE_DIR.glob("*.json")) if STATE_DIR.exists() else []
+        assert len(state_files) == 0, "state file not cleaned up after stop"
 
         # ─── Step 5: flow wake ────────────────────────────────────
         code, out, err = run_flow("wake")

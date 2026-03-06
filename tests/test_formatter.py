@@ -29,18 +29,16 @@ def _make_turns(n):
 
 
 class TestFormatterEmptySession:
-    def test_empty_session_returns_single_chunk(self):
+    def test_empty_session_returns_empty_list(self):
         data = _make_data()
         chunks = Formatter().format(data)
-        assert len(chunks) == 1
-        assert chunks[0].chunk_index == 0
-        assert chunks[0].total_chunks == 1
-        assert "no recorded AI activity" in chunks[0].messages[0]["content"]
+        assert chunks == []
 
-    def test_empty_session_includes_project_name(self):
-        data = _make_data(project_name="my-app")
+    def test_empty_session_with_only_git_log(self):
+        data = _make_data(git_log="abc123 Initial commit")
         chunks = Formatter().format(data)
-        assert "my-app" in chunks[0].messages[0]["content"]
+        assert len(chunks) == 1
+        assert "Initial commit" in chunks[0].messages[0]["content"]
 
 
 class TestFormatterGitOnly:
@@ -159,3 +157,102 @@ class TestFormatterDiffExtraction:
         chunks = Formatter().format(data)
         content = chunks[0].messages[0]["content"]
         assert "truncated" in content
+
+
+class TestFormatterChunkCap:
+    """V1 (4.2): Large sessions must be capped at MAX_CHUNKS."""
+
+    def test_500_turns_capped_at_10_chunks(self):
+        turns = _make_turns(500)
+        data = _make_data(turns=turns, git_log="abc123 commit")
+        chunks = Formatter().format(data)
+        assert len(chunks) <= Formatter.MAX_CHUNKS
+
+    def test_capped_session_preserves_recent_turns(self):
+        """When turns are capped, the most recent ones should be kept."""
+        turns = _make_turns(500)
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        # The last chunk should contain the final messages from the session
+        last_chunk_content = " ".join(m["content"] for m in chunks[-1].messages)
+        assert "Message 499" in last_chunk_content
+
+    def test_small_session_not_affected_by_cap(self):
+        turns = _make_turns(15)
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        # 15 turns / 10 per chunk = 2 chunks, well under the cap
+        assert len(chunks) == 2
+
+    def test_exact_cap_boundary(self):
+        """MAX_CHUNKS * MAX_CHUNK_MESSAGES turns should produce exactly MAX_CHUNKS chunks."""
+        max_turns = Formatter.MAX_CHUNKS * Formatter.MAX_CHUNK_MESSAGES
+        turns = _make_turns(max_turns)
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        assert len(chunks) == Formatter.MAX_CHUNKS
+
+
+class TestFormatterSecretRedaction:
+    """V2 (6.2): Secrets must be redacted before mem0 ingestion."""
+
+    def test_anthropic_key_redacted(self):
+        turns = [Turn(
+            role="user",
+            content="My key is sk-ant-abc123defghijklmnopqrst",
+            timestamp="2025-03-04T10:00:00+00:00",
+        )]
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        all_content = " ".join(m["content"] for c in chunks for m in c.messages)
+        assert "sk-ant-" not in all_content
+        assert "[REDACTED_ANTHROPIC_KEY]" in all_content
+
+    def test_aws_key_redacted(self):
+        turns = [Turn(
+            role="assistant",
+            content="Found AWS key: AKIAIOSFODNN7EXAMPLE in config",
+            timestamp="2025-03-04T10:00:00+00:00",
+        )]
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        all_content = " ".join(m["content"] for c in chunks for m in c.messages)
+        assert "AKIAIOSFODNN7EXAMPLE" not in all_content
+        assert "[REDACTED_AWS_KEY]" in all_content
+
+    def test_github_token_redacted(self):
+        turns = [Turn(
+            role="user",
+            content="Use ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789 for auth",
+            timestamp="2025-03-04T10:00:00+00:00",
+        )]
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        all_content = " ".join(m["content"] for c in chunks for m in c.messages)
+        assert "ghp_" not in all_content
+        assert "[REDACTED_GITHUB_TOKEN]" in all_content
+
+    def test_jwt_redacted(self):
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abc123def456ghi789"
+        turns = [Turn(
+            role="user",
+            content=f"Token: {jwt}",
+            timestamp="2025-03-04T10:00:00+00:00",
+        )]
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        all_content = " ".join(m["content"] for c in chunks for m in c.messages)
+        assert "eyJ" not in all_content
+        assert "[REDACTED_JWT]" in all_content
+
+    def test_normal_text_unchanged(self):
+        turns = [Turn(
+            role="user",
+            content="Just a normal message about implementing auth",
+            timestamp="2025-03-04T10:00:00+00:00",
+        )]
+        data = _make_data(turns=turns)
+        chunks = Formatter().format(data)
+        user_msgs = [m for m in chunks[0].messages if "[Session context]" not in m.get("content", "")]
+        assert any("Just a normal message" in m["content"] for m in user_msgs)
+

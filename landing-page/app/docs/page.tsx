@@ -33,9 +33,13 @@ export default function DocsPage() {
                                 Installation
                             </h2>
                             <div className="bg-secondary/30 border-2 border-border p-6 mb-4 font-mono text-sm leading-relaxed">
-                                <p className="mb-4">Install the package manually from the project root:</p>
+                                <p className="mb-4">Install the package from the project root:</p>
                                 <div className="bg-background border-2 border-border p-4 shadow-[4px_4px_0_0_hsl(var(--primary))]">
-                                    <code className="text-primary">pip install -e .</code>
+                                    <code className="text-primary whitespace-pre-wrap">
+                                        git clone https://github.com/samrathp29/flow.git{"\n"}
+                                        cd flow{"\n"}
+                                        pip install -e .
+                                    </code>
                                 </div>
                             </div>
                         </section>

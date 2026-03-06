@@ -18,7 +18,7 @@ export function DeveloperSection() {
           { icon: <ClaudeLogo className="h-10 w-10 text-foreground mb-4" />, status: "Supported" },
           { icon: <CursorLogo className="h-10 w-10 text-foreground mb-4" />, status: "Supported" },
           { icon: <CodexLogo className="h-10 w-10 text-foreground mb-4" />, status: "Supported" },
-          { icon: <GitLogo className="h-10 w-10 text-foreground mb-4" />, status: "Diff Only" },
+          { icon: <GitLogo className="h-10 w-10 text-foreground mb-4" />, status: "Supported" },
         ].map((tool, i) => (
           <ScrollReveal key={i} delay={(i + 1) * 100} className="h-full">
             <div className="flex flex-col items-center border-2 border-border bg-background p-6 transition-transform hover:-translate-y-1 hover:border-primary h-full">

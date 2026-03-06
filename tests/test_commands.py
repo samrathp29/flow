@@ -20,19 +20,25 @@ def runner():
 
 @pytest.fixture
 def tmp_state(tmp_path):
-    """Patch SessionManager.STATE_PATH to use tmp dir."""
-    state_path = tmp_path / "state.json"
-    with patch.object(SessionManager, "STATE_PATH", state_path):
-        yield state_path
+    """Patch SessionManager.STATE_DIR to use tmp dir."""
+    state_dir = tmp_path / "sessions"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with patch.object(SessionManager, "STATE_DIR", state_dir), \
+         patch.object(SessionManager, "_migrate_legacy_state"):
+        yield state_dir
 
 
 @pytest.fixture
-def mock_detect():
-    """Mock _detect_project to avoid needing a real git repo."""
+def mock_detect(tmp_state):
+    """Mock _detect_project to avoid needing a real git repo.
+    Uses tmp_state parent as a real directory so PID file writes succeed."""
+    project_path = str(tmp_state.parent / "fake-project")
+    Path(project_path).mkdir(parents=True, exist_ok=True)
+    project_id = SessionManager._make_project_id(project_path)
     with patch.object(
         SessionManager, "_detect_project",
-        return_value=("test-project", "/fake/test-project"),
-    ):
+        return_value=("test-project", project_path, project_id),
+    ), patch.object(SessionManager, "_get_head", return_value="abc123"):
         yield
 
 
@@ -45,7 +51,9 @@ class TestStartCommand:
         assert result.exit_code == 0
         assert "▶ Session started" in result.output
         assert "test-project" in result.output
-        assert tmp_state.exists()
+        # Check that a state file was created in STATE_DIR
+        state_files = list(tmp_state.glob("*.json"))
+        assert len(state_files) == 1
 
     def test_start_no_git_repo(self, runner, tmp_state):
         with patch.object(
@@ -112,7 +120,7 @@ class TestStartCommand:
 
 
 class TestStopCommand:
-    def test_stop_no_session(self, runner, tmp_state):
+    def test_stop_no_session(self, runner, tmp_state, mock_detect):
         result = runner.invoke(cli, ["stop"])
         assert result.exit_code == 1
         assert "No active session" in result.output
@@ -156,7 +164,8 @@ class TestStopCommand:
         assert "✓ Session saved" in result.output
         assert "2h" in result.output
 
-    def test_stop_partial_chunk_failure(self, runner, tmp_state, mock_detect):
+    def test_stop_empty_session_skipped(self, runner, tmp_state, mock_detect):
+        """Empty sessions (no turns, no git) should be skipped."""
         runner.invoke(cli, ["start"])
 
         mock_config = MagicMock()
@@ -170,6 +179,31 @@ class TestStopCommand:
             ended_at="2025-03-04T12:00:00+00:00",
             duration_mins=120,
             turns=[],
+            git_diff="",
+            git_log="",
+        )
+
+        with patch("flow.config.FlowConfig.load", return_value=mock_config), \
+             patch("flow.collector.Collector", return_value=mock_collector_instance):
+            result = runner.invoke(cli, ["stop"])
+
+        assert result.exit_code == 0
+        assert "No activity detected" in result.output
+
+    def test_stop_partial_chunk_failure(self, runner, tmp_state, mock_detect):
+        runner.invoke(cli, ["start"])
+
+        mock_config = MagicMock()
+        mock_config.data_dir = Path("/tmp/flow-test")
+
+        mock_collector_instance = MagicMock()
+        mock_collector_instance.collect.return_value = MagicMock(
+            project_name="test-project",
+            project_path="/fake/test-project",
+            started_at="2025-03-04T10:00:00+00:00",
+            ended_at="2025-03-04T12:00:00+00:00",
+            duration_mins=120,
+            turns=[MagicMock()],  # non-empty turns so it doesn't skip
             git_diff="",
             git_log="",
         )

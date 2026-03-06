@@ -11,7 +11,7 @@ export function HeroSection() {
       <div className="relative z-10 flex flex-col items-center px-4 text-center mt-20 pb-20">
         <div className="inline-flex items-center gap-2 bg-primary/20 text-primary px-3 py-1 text-xs font-mono mb-8 uppercase tracking-widest border border-primary animate-in fade-in slide-in-from-bottom-4 duration-700">
           <Terminal className="h-4 w-4" />
-          <span>v1.0.0 Now Available</span>
+          <span>v0.1.0 Alpha</span>
         </div>
 
         <h1 className="mb-6 font-sans text-6xl font-black uppercase tracking-tighter text-foreground md:text-8xl lg:text-9xl animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both delay-150">

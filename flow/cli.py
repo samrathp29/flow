@@ -1,5 +1,6 @@
 """Click entrypoint for flow CLI."""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -8,7 +9,9 @@ import click
 
 PID_FILE = ".flow.pid"
 
-from flow.session import SessionError, SessionManager
+from flow.session import SessionError, SessionManager, SessionState
+
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -20,7 +23,29 @@ def cli():
 @cli.command()
 def start():
     """Begin a flow session in the current project."""
+    from flow.config import ConfigNotFound, FlowConfig
+
     sm = SessionManager()
+
+    # Detect project first (needed for stale recovery)
+    try:
+        name, path, project_id = sm._detect_project()
+    except SessionError as e:
+        click.echo(f"✗ {e}", err=True)
+        sys.exit(1)
+
+    # Check for stale session and attempt recovery
+    existing = sm.get_active(project_id)
+    if existing and sm._is_stale(existing):
+        click.echo(f"⟳ Recovering stale session ({existing.project_name})...")
+        try:
+            config = FlowConfig.load()
+            _recover_session(existing, config)
+        except Exception:
+            logger.warning("Stale session recovery failed", exc_info=True)
+            click.echo("⚠ Recovery failed — discarding stale session", err=True)
+        sm.clean_stale(project_id)
+
     try:
         state = sm.start()
     except SessionError as e:
@@ -34,8 +59,6 @@ def start():
 
     # Proactive context injection: query mem0, format for AI agent, write context files.
     # Graceful — never blocks or fails the session start.
-    from flow.config import ConfigNotFound, FlowConfig
-
     try:
         config = FlowConfig.load()
     except ConfigNotFound:
@@ -45,16 +68,12 @@ def start():
         from flow.context import ContextInjector
 
         injector = ContextInjector(config)
-        written = injector.inject(state.project_name, state.project_path)
+        written = injector.inject(state.project_id, state.project_path)
         injector.close()
         if written:
             click.echo(f"⟳ Context injected into {', '.join(written)}")
     except Exception:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Context injection failed", exc_info=True
-        )
+        logger.warning("Context injection failed", exc_info=True)
 
 
 @cli.command()
@@ -78,10 +97,19 @@ def stop():
         click.echo(f"✗ {e}", err=True)
         sys.exit(1)
 
+    # Retry any previously failed sessions first
+    _retry_failed_sessions(config)
+
     click.echo("⠿ Processing session...")
 
     collector = Collector()
     data = collector.collect(state)
+
+    # Skip storage for empty sessions (no turns, no git activity)
+    if not data.turns and not data.git_diff and not data.git_log:
+        click.echo("⏭ No activity detected — session not stored.")
+        _cleanup_pid(state.project_path)
+        return
 
     duration = _format_duration(data.duration_mins)
     metadata = {
@@ -92,10 +120,15 @@ def stop():
     # Format into chunks (no LLM call — pure formatting)
     chunks = Formatter().format(data)
 
+    if not chunks:
+        click.echo("⏭ No activity detected — session not stored.")
+        _cleanup_pid(state.project_path)
+        return
+
     # Store via mem0 (mem0 handles fact extraction internally)
     try:
         mem = FlowMemory(config)
-        stored = mem.add_chunks(chunks, data.project_name, metadata)
+        stored = mem.add_chunks(chunks, state.project_id, metadata)
         mem.close()
         if stored < len(chunks):
             click.echo(
@@ -108,7 +141,7 @@ def stop():
         failed_dir = config.data_dir / "failed"
         failed_dir.mkdir(parents=True, exist_ok=True)
         ts = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%S")
-        fallback_path = failed_dir / f"{data.project_name}_{ts}.txt"
+        fallback_path = failed_dir / f"{state.project_id}_{ts}.txt"
         combined = "\n\n---\n\n".join(
             "\n".join(f"{m['role']}: {m['content']}" for m in c.messages)
             for c in chunks
@@ -116,10 +149,7 @@ def stop():
         fallback_path.write_text(combined)
         click.echo(f"⚠ Memory storage failed — session saved to {fallback_path}", err=True)
 
-    # Remove PID file
-    pid_path = Path(state.project_path) / PID_FILE
-    pid_path.unlink(missing_ok=True)
-
+    _cleanup_pid(state.project_path)
     click.echo(f"✓ Session saved ({data.project_name} · {duration})")
 
 
@@ -131,7 +161,7 @@ def wake():
 
     sm = SessionManager()
     try:
-        name, path = sm._detect_project()
+        name, path, project_id = sm._detect_project()
     except SessionError as e:
         click.echo(f"✗ {e}", err=True)
         sys.exit(1)
@@ -143,7 +173,7 @@ def wake():
         sys.exit(1)
 
     retriever = Retriever(config)
-    briefing = retriever.wake(name, path)
+    briefing = retriever.wake(project_id, path)
     retriever.flow_memory.close()
 
     click.echo(f"\n⚡ {name}\n")
@@ -174,7 +204,7 @@ def ask(question):
 
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
-    "openai": "gpt-4.1-mini",
+    "openai": "gpt-4.1",
 }
 
 
@@ -189,11 +219,17 @@ def init():
             click.echo("Aborted.")
             return
 
+    # Privacy notice
+    click.echo("\n📋 Data & Privacy:")
+    click.echo("  Flow reads AI tool logs (Claude Code, Cursor, Codex) and git diffs.")
+    click.echo("  All data stays local in ~/.local/share/flow")
+    click.echo("  Memory extraction sends conversation text to your LLM provider.")
+    click.echo("  No raw code or full diffs are sent — only conversation summaries.\n")
+
     # Prompt for provider
     provider = click.prompt(
         "LLM provider",
         type=click.Choice(["anthropic", "openai"], case_sensitive=False),
-        default="anthropic",
     )
 
     # Prompt for API key
@@ -234,6 +270,91 @@ def init():
         "to prevent log deletion:\n"
         '   "maxStorageAgeInDays": 999'
     )
+
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+
+def _recover_session(state: SessionState, config) -> None:
+    """Attempt to collect and store data from a stale/crashed session."""
+    from flow.collector import Collector
+    from flow.formatter import Formatter
+    from flow.memory import FlowMemory
+
+    collector = Collector()
+    data = collector.collect(state)
+
+    if not data.turns and not data.git_diff and not data.git_log:
+        return  # nothing to recover
+
+    chunks = Formatter().format(data)
+    if not chunks:
+        return
+
+    metadata = {
+        "session_date": data.started_at[:10],
+        "duration_mins": data.duration_mins,
+        "recovery": True,
+    }
+
+    try:
+        mem = FlowMemory(config)
+        mem.add_chunks(chunks, state.project_id, metadata)
+        mem.close()
+        duration = _format_duration(data.duration_mins)
+        click.echo(f"  ✓ Recovered session ({state.project_name} · {duration})")
+    except Exception:
+        logger.warning("Recovery storage failed", exc_info=True)
+
+
+def _retry_failed_sessions(config) -> None:
+    """Retry ingestion of previously failed sessions."""
+    from flow.memory import FlowMemory
+
+    failed_dir = config.data_dir / "failed"
+    if not failed_dir.exists():
+        return
+
+    pending = list(failed_dir.glob("*.txt"))
+    if not pending:
+        return
+
+    click.echo(f"⟳ Retrying {len(pending)} previously failed session(s)...")
+
+    try:
+        mem = FlowMemory(config)
+    except Exception:
+        logger.warning("Could not initialize mem0 for retry", exc_info=True)
+        return
+
+    for path in pending:
+        try:
+            content = path.read_text()
+            # Extract project_id from filename: "{project_id}_{timestamp}.txt"
+            project_id = path.stem.rsplit("_", 1)[0]
+            mem.memory.add(
+                messages=[{"role": "user", "content": content}],
+                user_id="flow",
+                agent_id=project_id,
+                metadata={"recovery": True},
+            )
+            path.unlink()
+            click.echo(f"  ✓ Retried: {path.name}")
+        except Exception:
+            logger.warning("Retry failed for %s", path.name, exc_info=True)
+
+    try:
+        mem.close()
+    except Exception:
+        pass
+
+
+def _cleanup_pid(project_path: str) -> None:
+    """Remove the .flow.pid file from the project root."""
+    pid_path = Path(project_path) / PID_FILE
+    pid_path.unlink(missing_ok=True)
 
 
 SHELL_HOOK_MARKER = "# flow shell integration"

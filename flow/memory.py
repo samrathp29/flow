@@ -41,6 +41,33 @@ Example: {"facts": ["Switched from REST to GraphQL for the user API due to neste
 "JWT refresh endpoint is broken - returns 401 instead of new token", \
 "Next step: add rate limiting middleware to the /api/auth routes"]}"""
 
+UPDATE_PROMPT = """\
+You are managing a developer's project memory. Your goal is to keep \
+the memory store **converged** — a concise, current-state knowledge base, \
+not an append-only log.
+
+Compare each new fact against ALL existing memories. For each new fact, decide:
+
+1. **UPDATE** (preferred): When a new fact supersedes, refines, or evolves an \
+existing memory. Merge them into ONE memory that captures the current state. \
+Examples:
+   - Old: "Using Redis for caching" + New: "Abandoned Redis, switched to Memcached" \
+→ UPDATE to: "Switched from Redis to Memcached for caching (Redis was too complex)"
+   - Old: "JWT auth is broken" + New: "Fixed JWT auth by correcting the refresh endpoint" \
+→ UPDATE to: "JWT auth is working after fixing the refresh endpoint"
+
+2. **DELETE**: When an existing memory is fully contradicted and the new fact \
+already captures the change via an UPDATE. Use sparingly.
+
+3. **ADD**: ONLY when the fact is genuinely novel — not a variation, evolution, \
+or correction of any existing memory. Before choosing ADD, re-check every \
+existing memory for overlap.
+
+4. **NONE**: When the fact is already captured in existing memory.
+
+**Bias strongly toward UPDATE over ADD.** Two memories about the same topic \
+(e.g., caching, auth, database choice) should almost always be merged into one."""
+
 
 class FlowMemory:
     """Manages session memory storage and retrieval via mem0."""
@@ -76,6 +103,7 @@ class FlowMemory:
                 },
             },
             "custom_fact_extraction_prompt": EXTRACTION_PROMPT,
+            "custom_update_memory_prompt": UPDATE_PROMPT,
             "version": "v1.1",
         }
         self.memory = Memory.from_config(mem0_config)

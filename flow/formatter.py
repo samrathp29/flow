@@ -6,7 +6,21 @@ mem0 handles the intelligence (fact extraction, deduplication, embedding).
 
 from __future__ import annotations
 
+import re
+
 from flow.session import MessageChunk, RawSessionData, Turn
+
+# Patterns for common secret formats — applied before mem0 ingestion
+SECRET_PATTERNS = [
+    (re.compile(r"sk-ant-[A-Za-z0-9\-]{20,}"), "[REDACTED_ANTHROPIC_KEY]"),
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]"),
+    (re.compile(r"ghp_[A-Za-z0-9_]{36,}"), "[REDACTED_GITHUB_TOKEN]"),
+    (re.compile(r"gho_[A-Za-z0-9_]{36,}"), "[REDACTED_GITHUB_TOKEN]"),
+    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "[REDACTED_API_KEY]"),
+    (re.compile(
+        r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
+    ), "[REDACTED_JWT]"),
+]
 
 
 class Formatter:
@@ -14,30 +28,26 @@ class Formatter:
 
     MAX_ASSISTANT_LENGTH = 2000  # truncate long code dumps / error traces
     MAX_CHUNK_MESSAGES = 10  # aligns with mem0's internal sliding window
+    MAX_CHUNKS = 10  # cap total chunks to limit LLM calls per session
     MAX_DIFF_LENGTH = 4000  # for the git context preamble
 
     def format(self, data: RawSessionData) -> list[MessageChunk]:
-        """Format raw session data into mem0-ready message chunks."""
+        """Format raw session data into mem0-ready message chunks.
+
+        Returns empty list if the session has no meaningful content.
+        """
         if not data.turns and not data.git_diff and not data.git_log:
-            return [
-                MessageChunk(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Session of {data.duration_mins} minutes in "
-                                f"{data.project_name} with no recorded AI "
-                                "activity or file changes."
-                            ),
-                        }
-                    ],
-                    chunk_index=0,
-                    total_chunks=1,
-                )
-            ]
+            return []
 
         git_preamble = self._build_git_preamble(data)
         cleaned_turns = self._truncate_turns(data.turns)
+
+        # Cap total turns to avoid excessive mem0 LLM calls.
+        # Keep the most recent turns (developer cares most about where they ended).
+        max_turns = self.MAX_CHUNKS * self.MAX_CHUNK_MESSAGES
+        if len(cleaned_turns) > max_turns:
+            cleaned_turns = cleaned_turns[-max_turns:]
+
         messages = [{"role": t.role, "content": t.content} for t in cleaned_turns]
         return self._chunk_messages(messages, git_preamble, data)
 
@@ -82,17 +92,21 @@ class Formatter:
         )
 
     def _truncate_turns(self, turns: list[Turn]) -> list[Turn]:
-        """Truncate assistant messages that are too long (code dumps, etc.)."""
+        """Truncate long assistant messages and redact secrets from all turns."""
         result: list[Turn] = []
         for t in turns:
-            if t.role == "assistant" and len(t.content) > self.MAX_ASSISTANT_LENGTH:
-                truncated = (
-                    t.content[: self.MAX_ASSISTANT_LENGTH] + "\n[...truncated]"
-                )
-                result.append(Turn(role=t.role, content=truncated, timestamp=t.timestamp))
-            else:
-                result.append(t)
+            content = self._redact_secrets(t.content)
+            if t.role == "assistant" and len(content) > self.MAX_ASSISTANT_LENGTH:
+                content = content[: self.MAX_ASSISTANT_LENGTH] + "\n[...truncated]"
+            result.append(Turn(role=t.role, content=content, timestamp=t.timestamp))
         return result
+
+    @staticmethod
+    def _redact_secrets(text: str) -> str:
+        """Replace common secret patterns with redaction markers."""
+        for pattern, replacement in SECRET_PATTERNS:
+            text = pattern.sub(replacement, text)
+        return text
 
     def _chunk_messages(
         self,

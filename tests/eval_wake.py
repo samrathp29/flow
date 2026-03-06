@@ -35,7 +35,7 @@ from flow.session import RawSessionData, Turn
 # Judge config
 # ---------------------------------------------------------------------------
 
-JUDGE_MODEL = "gpt-4.1-mini"
+JUDGE_MODEL = "gpt-4.1"
 PASS_THRESHOLD = 3.5
 
 RUBRIC_PROMPT = """\
@@ -406,6 +406,15 @@ def judge_briefing(
 # ---------------------------------------------------------------------------
 
 def main():
+    # Load .env if it exists in the same directory
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
     # Validate env
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key:

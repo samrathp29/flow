@@ -8,7 +8,7 @@ from flow.parsers.base import ParserUnavailable
 from flow.parsers.claude_code import ClaudeCodeParser
 from flow.parsers.codex import CodexParser
 from flow.parsers.cursor import CursorParser
-from flow.session import RawSessionData, SessionState
+from flow.session import RawSessionData, SessionState, Turn
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ class Collector:
     """Orchestrates all parsers and git operations for a session."""
 
     PARSERS = [ClaudeCodeParser, CursorParser, CodexParser]
+    DEDUP_WINDOW_SECONDS = 60  # same-role turns within this window are checked
 
     def collect(self, state: SessionState) -> RawSessionData:
         """Collect all session data: parser turns + git diff/log."""
@@ -33,6 +34,7 @@ class Collector:
                 logger.warning("Parser %s failed", parser_cls.__name__, exc_info=True)
 
         turns.sort(key=lambda t: t.timestamp)
+        turns = self._deduplicate_turns(turns)
 
         ended_at = datetime.now(timezone.utc).isoformat()
         started = datetime.fromisoformat(state.started_at)
@@ -49,6 +51,42 @@ class Collector:
             git_log=self._git_log(state.project_path, since=state.started_at),
         )
 
+    def _deduplicate_turns(self, turns: list[Turn]) -> list[Turn]:
+        """Remove near-duplicate turns from different tools within a time window."""
+        if not turns:
+            return turns
+
+        result: list[Turn] = [turns[0]]
+        for turn in turns[1:]:
+            prev = result[-1]
+            if prev.role == turn.role:
+                try:
+                    t1 = datetime.fromisoformat(prev.timestamp.replace("Z", "+00:00"))
+                    t2 = datetime.fromisoformat(turn.timestamp.replace("Z", "+00:00"))
+                    gap = abs((t2 - t1).total_seconds())
+                except (ValueError, AttributeError):
+                    gap = float("inf")
+
+                if gap < self.DEDUP_WINDOW_SECONDS and self._similar(prev.content, turn.content):
+                    continue  # skip duplicate
+            result.append(turn)
+        return result
+
+    @staticmethod
+    def _similar(a: str, b: str) -> bool:
+        """Check if two strings are near-identical (>90% character overlap)."""
+        if a == b:
+            return True
+        shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+        if not longer:
+            return True
+        # Quick length check: if lengths differ by >20%, not similar
+        if len(shorter) / len(longer) < 0.8:
+            return False
+        # Count matching characters (order-preserving)
+        matches = sum(1 for c1, c2 in zip(shorter, longer) if c1 == c2)
+        return matches / len(longer) > 0.9
+
     def _git_diff(self, project_path: str, base_commit: str) -> str:
         """Diff all changes made during the session (committed + uncommitted)."""
         try:
@@ -58,6 +96,16 @@ class Collector:
                     ["git", "diff", base_commit],
                     capture_output=True, text=True, cwd=project_path,
                 )
+                # Fallback if base_commit no longer exists (rebase/force-push)
+                if result.returncode != 0:
+                    logger.warning(
+                        "base_commit %s not found (rebase?), falling back to HEAD~20",
+                        base_commit,
+                    )
+                    result = subprocess.run(
+                        ["git", "diff", "HEAD~20"],
+                        capture_output=True, text=True, cwd=project_path,
+                    )
             else:
                 # No base commit (brand new repo) -- diff against the empty tree
                 result = subprocess.run(

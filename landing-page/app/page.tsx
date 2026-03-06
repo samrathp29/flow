@@ -2,6 +2,7 @@ import { Navbar } from "@/components/navbar"
 import { HeroSection } from "@/components/hero-section"
 import { HomeSection } from "@/components/home-section"
 import { OwnDataSection } from "@/components/own-data-section"
+import { ContextInjectionSection } from "@/components/context-injection-section"
 import { DeveloperSection } from "@/components/developer-section"
 import { Footer } from "@/components/footer"
 
@@ -12,6 +13,7 @@ export default function Page() {
       <HeroSection />
       <HomeSection />
       <OwnDataSection />
+      <ContextInjectionSection />
       <DeveloperSection />
       <Footer />
     </main>

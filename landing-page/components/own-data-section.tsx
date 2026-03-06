@@ -17,7 +17,7 @@ export function OwnDataSection() {
         </ScrollReveal>
         <ScrollReveal delay={300}>
           <p className="mb-8 max-w-md font-mono text-sm leading-relaxed text-muted-foreground">
-            Your code never leaves your machine unless you want it to. Flow runs locally and stores distilled context using Mem0 vector memory. No cloud accounts, no sync servers, no telemetry.
+            Your code never leaves your machine. Flow runs locally and stores distilled context using Mem0 + Qdrant vector memory. Local storage, zero telemetry.
           </p>
         </ScrollReveal>
       </div>
@@ -29,16 +29,13 @@ export function OwnDataSection() {
               <span className="text-muted-foreground">state.json</span>
               <span className="text-primary text-xs uppercase">Local Vector DB</span>
             </div>
-            <pre className="text-muted-foreground overflow-x-auto text-[10px] md:text-xs">
+            <pre className="text-muted-foreground overflow-x-auto text-[10px] md:text-sm">
               <code>{`{
-  "project": "auth-service",
-  "memory": [
-    {
-      "id": "mem_01",
-      "text": "Fixed GitHub OAuth callback...",
-      "tags": ["oauth", "bug"]
-    }
-  ]
+  "project_name": "auth-service",
+  "project_id": "auth-service-a1b2c3d4",
+  "started_at": "2024-03-05T10:00:00Z",
+  "base_commit": "7f2d1a3...",
+  "status": "ready"
 }`}</code>
             </pre>
           </div>
