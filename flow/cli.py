@@ -367,7 +367,7 @@ _flow_prompt() {
         fi
     else
         if [[ "$PROMPT" == *"(flow) "* ]]; then
-            PROMPT="${PROMPT//(flow) /}"
+            PROMPT="${PROMPT//\\(flow\\) /}"
         fi
     fi
 }
