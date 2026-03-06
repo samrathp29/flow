@@ -63,7 +63,7 @@ already captures the change via an UPDATE. Use sparingly.
 or correction of any existing memory. Before choosing ADD, re-check every \
 existing memory for overlap.
 
-4. **NONE**: When the fact is already captured in existing memory.
+4. **DISCARD**: When the fact is already captured in existing memory.
 
 **Bias strongly toward UPDATE over ADD.** Two memories about the same topic \
 (e.g., caching, auth, database choice) should almost always be merged into one."""
