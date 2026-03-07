@@ -277,7 +277,7 @@ export function DemoSection() {
                     <div className="mt-6 flex items-start gap-4">
                         <ChevronRight className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                         <p className="font-mono text-sm text-muted-foreground">
-                            {activeStep === 0 && "flow start records the HEAD commit, writes a PID file, queries Mem0 for prior context, and injects a compressed briefing into your AI tool's rules file before you write a single prompt."}
+                            {activeStep === 0 && "flow start records the HEAD commit, writes a PID file, queries Mem0 for prior context, and injects a compressed briefing into your AI tool's rules (like .cursor/rules/flow.mdc) before you write a single prompt."}
                             {activeStep === 1 && "You work normally. Flow doesn't run in the foreground. The (flow) shell indicator shows a session is active. Commits, AI conversations, and file changes are captured at stop time."}
                             {activeStep === 2 && "flow stop parses all AI tool logs, runs an LLM over the git diff for semantic understanding, redacts secrets, chunks the session, and feeds it to Mem0. Facts are extracted, compared against existing memories, and merged or added."}
                             {activeStep === 3 && "flow wake searches your Mem0 memory by meaning, picks a prompt tier based on how long you've been away, and generates a natural-language briefing from your memories plus recent git activity."}

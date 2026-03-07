@@ -102,15 +102,24 @@ class ContextInjector:
         if (project_path / "AGENTS.md").exists():
             targets.append("AGENTS.md")
         if (project_path / ".cursor").exists():
-            targets.append(".cursorrules")
+            # Support new Cursor Project Rules format (.mdc)
+            targets.append(".cursor/rules/flow.mdc")
         return targets
 
     def _write_file(self, target: Path, block: str) -> None:
         """Write or update a single context file with marker-delimited block."""
-        header = "<!-- flow: auto-generated context — do not edit this block -->\n\n"
         replacement = f"{MARKER_START}\n{block}\n{MARKER_END}"
 
         if not target.exists():
+            # Create parent directories if needed (e.g. .cursor/rules/)
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            if target.suffix == ".mdc":
+                # Cursor Project Rules format requires a YAML header
+                header = "---\ndescription: \"Project context and recent activity from Flow\"\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n"
+            else:
+                header = "<!-- flow: auto-generated context — do not edit this block -->\n\n"
+            
             target.write_text(f"{header}{replacement}\n")
         else:
             self._inject_or_replace(target, replacement)

@@ -32,7 +32,7 @@ export function ContextInjectionSection() {
                         <ul className="space-y-4 mb-10">
                             {[
                                 "CLAUDE.md for Claude Code",
-                                ".cursorrules for Cursor",
+                                ".cursor/rules/flow.mdc for Cursor",
                                 "AGENTS.md for Codex"
                             ].map((text, i) => (
                                 <li key={i} className="flex items-center gap-3 font-mono text-sm text-foreground">

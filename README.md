@@ -32,7 +32,7 @@ Flow operates alongside your normal git workflow. All commands are run from insi
 
 ### Start a Session
 
-Begin tracking a coding session in your current git repository. If previous sessions exist, Flow automatically queries your project's memory and injects a compact context block into your AI tool's rules file: `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, `.cursorrules` for Cursor. The AI agent reads this on its first prompt and arrives with full project context: what's in progress, key decisions, dead ends to avoid, and what to do next.
+Begin tracking a coding session in your current git repository. If previous sessions exist, Flow automatically queries your project's memory and injects a compact context block into your AI tool's rules file: `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, `.cursor/rules/flow.mdc` for Cursor. The AI agent reads this on its first prompt and arrives with full project context: what's in progress, key decisions, dead ends to avoid, and what to do next.
 
 ```bash
 flow start
@@ -103,7 +103,7 @@ flow start
  inject between <!-- flow:start/end --> markers
  → CLAUDE.md (always)
  → AGENTS.md (if exists)
- → .cursorrules (if .cursor/ exists)
+ → .cursor/rules/flow.mdc (if .cursor/ exists)
 
 
 flow stop
@@ -126,7 +126,7 @@ flow stop
  │                                                     │
  │  git diff      base_commit → working tree           │
  │                 (excludes CLAUDE.md, AGENTS.md,      │
- │                  .cursorrules, .flow.pid)            │
+ │                  .cursor/rules/flow.mdc, .flow.pid)            │
  │  git log       --oneline --since={started_at}       │
  └─────────────────────────────────────────────────────┘
        │

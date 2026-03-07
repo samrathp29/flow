@@ -19,7 +19,7 @@ class Collector:
     PARSERS = [ClaudeCodeParser, CursorParser, CodexParser]
     DEDUP_WINDOW_SECONDS = 60  # same-role turns within this window are checked
     # Files managed by flow that should be excluded from session diffs
-    FLOW_MANAGED_FILES = [".flow.pid", "CLAUDE.md", "AGENTS.md", ".cursorrules"]
+    FLOW_MANAGED_FILES = [".flow.pid", "CLAUDE.md", "AGENTS.md", ".cursorrules", ".cursor/rules/flow.mdc"]
 
     def collect(self, state: SessionState) -> RawSessionData:
         """Collect all session data: parser turns + git diff/log."""
