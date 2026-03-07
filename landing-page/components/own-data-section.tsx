@@ -32,10 +32,11 @@ export function OwnDataSection() {
             <pre className="text-muted-foreground overflow-x-auto text-[10px] md:text-sm">
               <code>{`{
   "project_name": "auth-service",
+  "project_path": "/home/dev/auth-service",
   "project_id": "auth-service-a1b2c3d4",
-  "started_at": "2024-03-05T10:00:00Z",
-  "base_commit": "7f2d1a3...",
-  "status": "ready"
+  "started_at": "2025-11-05T10:00:00Z",
+  "pid": 48210,
+  "base_commit": "7f2d1a3..."
 }`}</code>
             </pre>
           </div>

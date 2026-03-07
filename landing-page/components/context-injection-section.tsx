@@ -54,7 +54,7 @@ export function ContextInjectionSection() {
                             <div className="bg-background border-2 border-primary p-6 font-mono text-xs md:text-sm">
                                 <div className="flex items-center gap-2 mb-4 text-primary border-b border-border pb-2">
                                     <Bot className="h-4 w-4" />
-                                    <span>PROMPT_CONTEXT.md</span>
+                                    <span>CLAUDE.md</span>
                                 </div>
                                 <div className="space-y-4 text-muted-foreground">
                                     <div>

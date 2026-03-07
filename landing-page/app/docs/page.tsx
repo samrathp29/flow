@@ -20,7 +20,7 @@ export default function DocsPage() {
                             Documentation
                         </h1>
                         <p className="font-mono text-base md:text-lg leading-relaxed text-muted-foreground">
-                            Flow is a CLI that watches your coding session and tells you where you left off. Reclaim your context and reach flow state instantly. It tracks your terminal commands, IDE chat logs, and git activity, distilling it into concise project context using an LLM and Mem0.
+                            Flow is a CLI that watches your coding session and tells you where you left off. Reclaim your context and reach flow state instantly. It tracks your AI tool chat logs (Claude Code, Cursor, Codex) and git activity, distilling it into concise project context using an LLM and Mem0.
                         </p>
                     </div>
                 </ScrollReveal>
@@ -79,7 +79,7 @@ export default function DocsPage() {
 
                                 <div>
                                     <h3 className="text-xl font-bold text-foreground mb-4 uppercase">Stop a Session</h3>
-                                    <p className="mb-4 text-muted-foreground">End the current session. Flow collates logs from Claude Code, Cursor, Codex, and Git, then distills the session and stores the summary in local vector memory.</p>
+                                    <p className="mb-4 text-muted-foreground">End the current session. Flow collates logs from Claude Code, Cursor, and Codex, summarizes git diffs with an LLM, redacts secrets, and stores the result as chunked messages in local vector memory via Mem0.</p>
                                     <div className="bg-background border-2 border-border p-4 shadow-[4px_4px_0_0_hsl(var(--primary))]">
                                         <code className="text-primary">flow stop</code>
                                     </div>

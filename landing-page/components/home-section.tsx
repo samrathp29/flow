@@ -20,7 +20,7 @@ export function HomeSection() {
       <div className="grid w-full max-w-5xl gap-8 md:grid-cols-3">
         {[
           { cmd: "start", desc: "Begin tracking a session. Flow automatically injects project context into your AI rules files." },
-          { cmd: "stop", desc: "End the session. Flow collates logs and git diffs, redacts secrets, and stores them in memory." },
+          { cmd: "stop", desc: "End the session. Flow collates logs and git diffs, summarizes changes with an LLM, redacts secrets, and stores them in memory." },
           { cmd: "wake", desc: "Get a situational briefing on where you left off. Adapts detail based on absence length." },
         ].map((item, i) => (
           <ScrollReveal key={i} delay={(i + 1) * 150} className="h-full">
