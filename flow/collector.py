@@ -18,6 +18,8 @@ class Collector:
 
     PARSERS = [ClaudeCodeParser, CursorParser, CodexParser]
     DEDUP_WINDOW_SECONDS = 60  # same-role turns within this window are checked
+    # Files managed by flow that should be excluded from session diffs
+    FLOW_MANAGED_FILES = [".flow.pid", "CLAUDE.md", "AGENTS.md", ".cursorrules"]
 
     def collect(self, state: SessionState) -> RawSessionData:
         """Collect all session data: parser turns + git diff/log."""
@@ -89,11 +91,12 @@ class Collector:
 
     def _git_diff(self, project_path: str, base_commit: str) -> str:
         """Diff all changes made during the session (committed + uncommitted)."""
+        excludes = ["--"] + [f":(exclude){f}" for f in self.FLOW_MANAGED_FILES]
         try:
             if base_commit:
                 # Diff from the commit at session start to current working tree
                 result = subprocess.run(
-                    ["git", "diff", base_commit],
+                    ["git", "diff", base_commit] + excludes,
                     capture_output=True, text=True, cwd=project_path,
                 )
                 # Fallback if base_commit no longer exists (rebase/force-push)
@@ -103,18 +106,18 @@ class Collector:
                         base_commit,
                     )
                     result = subprocess.run(
-                        ["git", "diff", "HEAD~20"],
+                        ["git", "diff", "HEAD~20"] + excludes,
                         capture_output=True, text=True, cwd=project_path,
                     )
             else:
                 # No base commit (brand new repo) -- diff against the empty tree
                 result = subprocess.run(
-                    ["git", "diff", "4b825dc642cb6eb9a060e54bf899d8b965cf8e6f", "HEAD"],
+                    ["git", "diff", "4b825dc642cb6eb9a060e54bf899d8b965cf8e6f", "HEAD"] + excludes,
                     capture_output=True, text=True, cwd=project_path,
                 )
                 # Also include any staged but uncommitted changes
                 staged = subprocess.run(
-                    ["git", "diff", "--cached"],
+                    ["git", "diff", "--cached"] + excludes,
                     capture_output=True, text=True, cwd=project_path,
                 )
                 if staged.stdout.strip():

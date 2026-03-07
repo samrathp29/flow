@@ -11,9 +11,29 @@ from flow.session import MessageChunk
 
 logger = logging.getLogger(__name__)
 
+
+class _SuppressNoneEventFilter(logging.Filter):
+    """Suppress benign PointStruct validation errors from mem0 NONE events.
+
+    When the LLM outputs event=NONE (instead of DISCARD), mem0 tries to
+    update metadata with vector=None which occasionally triggers a Qdrant
+    PointStruct validation error. The error is caught internally by mem0
+    and doesn't cause data loss — it's purely cosmetic noise.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "PointStruct" in msg and "'event': 'NONE'" in msg:
+            return False
+        return True
+
+
+# Apply once at import time to the mem0 logger
+logging.getLogger("mem0").addFilter(_SuppressNoneEventFilter())
+
 EXTRACTION_PROMPT = """\
-You are extracting developer re-entry facts from a raw coding session \
-conversation between a developer and an AI assistant.
+You are extracting developer re-entry facts from a coding session.
+The input may be an AI conversation, git diffs and commits, or both.
 
 Extract ONLY facts that help the developer resume work after an extended absence:
 - What feature, bug fix, or refactor was actively being worked on
@@ -22,9 +42,16 @@ Extract ONLY facts that help the developer resume work after an extended absence
 - Open questions, blockers, or unresolved technical issues
 - The next concrete step to take
 - Files or components that were the focus of changes
+- Completion status: whether each task was FINISHED or still IN PROGRESS
+
+For each piece of work, explicitly state whether it was completed or left \
+unfinished. Use "COMPLETED:" or "IN PROGRESS:" prefixes. If the conversation \
+or git history shows a task was fully done (tests passing, bug fixed, feature \
+working), mark it completed. If work remains, say what specifically is left.
 
 STRICTLY IGNORE:
-- Code snippets, diffs, and implementation details (extract the decision, not the code)
+- Raw code snippets and implementation details (extract the decision, not the code)
+- Raw diff hunks (but DO extract what files changed and why from diff context)
 - AI explanations of how code works (unless a decision was made based on it)
 - Dependency installation, import errors, tool retries, build output
 - Formatting, linting, style discussions
@@ -37,9 +64,9 @@ When a decision was reversed during the session, only record the final state.
 Each fact should be a single concise sentence. Prefer specificity over breadth.
 
 Return a json object with a single key "facts" containing a list of short fact strings.
-Example: {"facts": ["Switched from REST to GraphQL for the user API due to nested data requirements", \
-"JWT refresh endpoint is broken - returns 401 instead of new token", \
-"Next step: add rate limiting middleware to the /api/auth routes"]}"""
+Example: {"facts": ["COMPLETED: Added /health endpoint with DB status check and graceful degradation", \
+"IN PROGRESS: JWT refresh endpoint returns 401 — middleware intercepts /auth/* routes", \
+"Next step: exclude /auth/refresh from JWT middleware to fix refresh flow"]}"""
 
 UPDATE_PROMPT = """\
 You are managing a developer's project memory. Your goal is to keep \
@@ -63,7 +90,8 @@ already captures the change via an UPDATE. Use sparingly.
 or correction of any existing memory. Before choosing ADD, re-check every \
 existing memory for overlap.
 
-4. **DISCARD**: When the fact is already captured in existing memory.
+4. **DISCARD**: When the fact is already captured in existing memory. \
+IMPORTANT: Always use "DISCARD" for this action, never use "NONE".
 
 **Bias strongly toward UPDATE over ADD.** Two memories about the same topic \
 (e.g., caching, auth, database choice) should almost always be merged into one."""

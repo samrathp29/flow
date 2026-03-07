@@ -30,6 +30,10 @@ A developer is returning to a project after {days_away} days.
 Write a 2-3 sentence briefing in second person. Focus on:
 - What to do next (pick up where they left off)
 
+CRITICAL: If a task is marked COMPLETED in the memories, do NOT suggest
+continuing or extending it unless a specific follow-up was noted. Acknowledge
+completed work briefly, then focus on what is actually unfinished or next.
+
 Be direct. No headers, no bullets. Sound like a knowledgeable colleague.
 Prioritize the most recent memories over older ones."""
 
@@ -39,6 +43,11 @@ Write a 3-5 sentence briefing in second person that tells them:
 - What they were working on
 - What was unresolved or blocked (ONLY IF APPLICABLE)
 - What to do first (only if clear)
+
+CRITICAL: If a task is marked COMPLETED in the memories, do NOT suggest
+continuing or extending it unless a specific follow-up was noted. Acknowledge
+completed work briefly ("X is done"), then focus on what is actually unfinished
+or blocked.
 
 Be direct. No headers, no bullets. Sound like a knowledgeable colleague.
 Prioritize the most recent memories. Mention older context only if
@@ -52,6 +61,11 @@ Write a 5-7 sentence briefing in second person that helps them rebuild context:
 - Key decisions that were made and why
 - What was unresolved or blocked
 - The most logical next step
+
+CRITICAL: If a task is marked COMPLETED in the memories, do NOT suggest
+continuing or extending it unless a specific follow-up was noted. Acknowledge
+completed work briefly ("X is done"), then focus on what is actually unfinished
+or blocked.
 
 Be direct and specific. No headers, no bullets. Sound like a knowledgeable
 colleague catching them up. Prioritize recent memories but include older

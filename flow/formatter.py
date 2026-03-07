@@ -1,14 +1,17 @@
-"""Formatter — mechanical formatting of RawSessionData into mem0-ready chunks.
+"""Formatter — formatting of RawSessionData into mem0-ready chunks.
 
-No LLM calls. All operations are string manipulation and list slicing.
-mem0 handles the intelligence (fact extraction, deduplication, embedding).
+Includes an optional LLM-powered diff summarization step that replaces
+raw unified diffs with semantic summaries before mem0 ingestion.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 
 from flow.session import MessageChunk, RawSessionData, Turn
+
+logger = logging.getLogger(__name__)
 
 # Patterns for common secret formats — applied before mem0 ingestion
 SECRET_PATTERNS = [
@@ -23,6 +26,21 @@ SECRET_PATTERNS = [
 ]
 
 
+DIFF_SUMMARY_PROMPT = """\
+You are a senior developer reviewing a git diff from a coding session.
+Produce a concise summary that another LLM can use to extract factual memories.
+
+For each file changed:
+- State what was added, modified, or deleted and WHY (infer intent from context).
+- Assess whether the change appears COMPLETE or IN PROGRESS (look for TODOs, stubs,
+  partial implementations, commented-out code, or missing error handling).
+
+End with a one-line overall status: "Overall: all changes appear complete." or
+"Overall: the following items appear incomplete: ..."
+
+Be concise. No code blocks. No diff syntax. Plain English only."""
+
+
 class Formatter:
     """Formats raw session data into chunked messages for mem0 ingestion."""
 
@@ -30,16 +48,21 @@ class Formatter:
     MAX_CHUNK_MESSAGES = 10  # aligns with mem0's internal sliding window
     MAX_CHUNKS = 10  # cap total chunks to limit LLM calls per session
     MAX_DIFF_LENGTH = 4000  # for the git context preamble
+    MAX_DIFF_FOR_LLM = 8000  # truncate diff before sending to summarization LLM
 
-    def format(self, data: RawSessionData) -> list[MessageChunk]:
+    def format(
+        self, data: RawSessionData, diff_summary: str = ""
+    ) -> list[MessageChunk]:
         """Format raw session data into mem0-ready message chunks.
 
         Returns empty list if the session has no meaningful content.
+        If *diff_summary* is provided, it replaces the raw diff in the
+        git preamble (the mechanical file list is still included).
         """
         if not data.turns and not data.git_diff and not data.git_log:
             return []
 
-        git_preamble = self._build_git_preamble(data)
+        git_preamble = self._build_git_preamble(data, diff_summary=diff_summary)
         cleaned_turns = self._truncate_turns(data.turns)
 
         # Cap total turns to avoid excessive mem0 LLM calls.
@@ -55,8 +78,10 @@ class Formatter:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_git_preamble(self, data: RawSessionData) -> str:
-        """Create a concise git context string (pure formatting, no LLM)."""
+    def _build_git_preamble(
+        self, data: RawSessionData, diff_summary: str = ""
+    ) -> str:
+        """Create a concise git context string for the session preamble."""
         parts = [f"Project: {data.project_name} | Duration: {data.duration_mins}min"]
 
         if data.git_log:
@@ -66,7 +91,10 @@ class Formatter:
             file_summary = self._summarize_diff(data.git_diff)
             parts.append(f"Files changed:\n{file_summary}")
 
-            if len(data.git_diff) > self.MAX_DIFF_LENGTH:
+            if diff_summary:
+                # Use the LLM-generated semantic summary instead of raw diff
+                parts.append(f"Change summary:\n{diff_summary}")
+            elif len(data.git_diff) > self.MAX_DIFF_LENGTH:
                 parts.append(
                     f"Diff excerpt (truncated):\n"
                     f"{data.git_diff[: self.MAX_DIFF_LENGTH]}..."
@@ -90,6 +118,39 @@ class Formatter:
             if files
             else "(no file paths parsed)"
         )
+
+    def summarize_diff_with_llm(
+        self, git_diff: str, git_log: str, llm: "LLM"
+    ) -> str:
+        """Semantically summarize a git diff using an LLM.
+
+        Returns a plain-English summary describing what changed, why, and
+        whether each change appears complete. Falls back to empty string
+        on LLM failure (caller will use raw diff instead).
+
+        The *llm* parameter is a ``flow.llm.LLM`` instance (imported lazily
+        to avoid circular imports and keep Formatter usable without LLM deps
+        in tests).
+        """
+        if not git_diff:
+            return ""
+
+        from flow.llm import LLMError
+
+        truncated = git_diff[: self.MAX_DIFF_FOR_LLM]
+        if len(git_diff) > self.MAX_DIFF_FOR_LLM:
+            truncated += "\n[...diff truncated]"
+
+        user_msg = ""
+        if git_log:
+            user_msg += f"Commits:\n{git_log}\n\n"
+        user_msg += f"Diff:\n{truncated}"
+
+        try:
+            return llm.call(DIFF_SUMMARY_PROMPT, user_msg)
+        except LLMError:
+            logger.warning("Diff summarization failed, falling back to raw diff")
+            return ""
 
     def _truncate_turns(self, turns: list[Turn]) -> list[Turn]:
         """Truncate long assistant messages and redact secrets from all turns."""
@@ -116,10 +177,16 @@ class Formatter:
     ) -> list[MessageChunk]:
         """Split messages into chunks, prepending git context to first chunk."""
         if not messages:
-            # No conversation turns, but we have git data
+            # No conversation turns — git data only.
+            # Frame explicitly so the extraction prompt knows to work with git data.
+            content = (
+                "[Git-only session — no AI conversation logs available]\n"
+                "Extract facts from the commit messages and file changes below.\n\n"
+                f"{git_preamble}"
+            )
             return [
                 MessageChunk(
-                    messages=[{"role": "user", "content": git_preamble}],
+                    messages=[{"role": "user", "content": content}],
                     chunk_index=0,
                     total_chunks=1,
                 )

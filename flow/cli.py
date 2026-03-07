@@ -7,11 +7,17 @@ from pathlib import Path
 
 import click
 
-PID_FILE = ".flow.pid"
-
 from flow.session import SessionError, SessionManager, SessionState
 
 logger = logging.getLogger(__name__)
+
+_PID_DIR = Path.home() / ".local" / "share" / "flow" / "pids"
+
+
+def _pid_path_for(project_id: str) -> Path:
+    """Return the PID file path in the flow data directory."""
+    _PID_DIR.mkdir(parents=True, exist_ok=True)
+    return _PID_DIR / f"{project_id}.pid"
 
 
 @click.group()
@@ -54,7 +60,7 @@ def start():
     click.echo(f"▶ Session started — watching {state.project_name}")
 
     # Write PID file so the shell hook can show (flow) in the prompt
-    pid_path = Path(state.project_path) / PID_FILE
+    pid_path = _pid_path_for(state.project_id)
     pid_path.write_text(str(os.getppid()))
 
     # Proactive context injection: query mem0, format for AI agent, write context files.
@@ -82,6 +88,7 @@ def stop():
     from flow.collector import Collector
     from flow.config import ConfigNotFound, FlowConfig
     from flow.formatter import Formatter
+    from flow.llm import LLM
     from flow.memory import FlowMemory
 
     sm = SessionManager()
@@ -108,7 +115,7 @@ def stop():
     # Skip storage for empty sessions (no turns, no git activity)
     if not data.turns and not data.git_diff and not data.git_log:
         click.echo("⏭ No activity detected — session not stored.")
-        _cleanup_pid(state.project_path)
+        _cleanup_pid(state.project_id, state.project_path)
         return
 
     duration = _format_duration(data.duration_mins)
@@ -117,12 +124,19 @@ def stop():
         "duration_mins": data.duration_mins,
     }
 
-    # Format into chunks (no LLM call — pure formatting)
-    chunks = Formatter().format(data)
+    # Summarize diff with LLM for better extraction (falls back to raw diff)
+    formatter = Formatter()
+    diff_summary = ""
+    if data.git_diff:
+        diff_summary = formatter.summarize_diff_with_llm(
+            data.git_diff, data.git_log, LLM(config)
+        )
+
+    chunks = formatter.format(data, diff_summary=diff_summary)
 
     if not chunks:
         click.echo("⏭ No activity detected — session not stored.")
-        _cleanup_pid(state.project_path)
+        _cleanup_pid(state.project_id, state.project_path)
         return
 
     # Store via mem0 (mem0 handles fact extraction internally)
@@ -149,7 +163,7 @@ def stop():
         fallback_path.write_text(combined)
         click.echo(f"⚠ Memory storage failed — session saved to {fallback_path}", err=True)
 
-    _cleanup_pid(state.project_path)
+    _cleanup_pid(state.project_id, state.project_path)
     click.echo(f"✓ Session saved ({data.project_name} · {duration})")
 
 
@@ -351,17 +365,32 @@ def _retry_failed_sessions(config) -> None:
         pass
 
 
-def _cleanup_pid(project_path: str) -> None:
-    """Remove the .flow.pid file from the project root."""
-    pid_path = Path(project_path) / PID_FILE
-    pid_path.unlink(missing_ok=True)
+def _cleanup_pid(project_id: str, project_path: str = "") -> None:
+    """Remove PID file from flow data dir. Also remove legacy .flow.pid if present."""
+    _pid_path_for(project_id).unlink(missing_ok=True)
+    if project_path:
+        (Path(project_path) / ".flow.pid").unlink(missing_ok=True)
 
 
 SHELL_HOOK_MARKER = "# flow shell integration"
 SHELL_HOOK = """\
 # flow shell integration
 _flow_prompt() {
-    if [[ -f .flow.pid ]] && kill -0 $(cat .flow.pid) 2>/dev/null; then
+    local pid_dir="$HOME/.local/share/flow/pids"
+    local session_dir="$HOME/.local/share/flow/sessions"
+    local flow_active=false
+    if [[ -d "$pid_dir" ]]; then
+        for f in "$pid_dir"/*.pid(N); do
+            local pid=$(cat "$f" 2>/dev/null)
+            local base="${f:t:r}"
+            if kill -0 "$pid" 2>/dev/null && [[ -f "$session_dir/$base.json" ]]; then
+                flow_active=true
+            else
+                rm -f "$f"
+            fi
+        done
+    fi
+    if $flow_active; then
         if [[ "$PROMPT" != *"(flow) "* ]]; then
             PROMPT="(flow) $PROMPT"
         fi
@@ -377,10 +406,27 @@ add-zsh-hook precmd _flow_prompt
 
 
 def _install_shell_hook():
-    """Append the flow prompt hook to ~/.zshrc if not already present."""
+    """Install or update the flow prompt hook in ~/.zshrc."""
     zshrc = Path.home() / ".zshrc"
-    if zshrc.exists() and SHELL_HOOK_MARKER in zshrc.read_text():
-        click.echo("\n✓ Shell integration already installed")
+    content = zshrc.read_text() if zshrc.exists() else ""
+
+    if SHELL_HOOK_MARKER in content:
+        # Hook exists — check if it's the current version
+        if SHELL_HOOK.strip() in content:
+            click.echo("\n✓ Shell integration already installed")
+            return
+
+        # Stale hook — replace it. Find the block between the marker and
+        # the end of the add-zsh-hook line.
+        import re
+
+        pattern = re.compile(
+            r"# flow shell integration\n.*?add-zsh-hook precmd _flow_prompt\n",
+            re.DOTALL,
+        )
+        new_content = pattern.sub(SHELL_HOOK, content)
+        zshrc.write_text(new_content)
+        click.echo("✓ Shell integration updated in ~/.zshrc (restart terminal or run: source ~/.zshrc)")
         return
 
     with zshrc.open("a") as f:
