@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/navbar"
 import { HeroSection } from "@/components/hero-section"
 import { HomeSection } from "@/components/home-section"
+import { DemoSection } from "@/components/demo-section"
 import { OwnDataSection } from "@/components/own-data-section"
 import { ContextInjectionSection } from "@/components/context-injection-section"
 import { WhyFlowSection } from "@/components/why-flow-section"
@@ -13,6 +14,7 @@ export default function Page() {
       <Navbar />
       <HeroSection />
       <HomeSection />
+      <DemoSection />
       <OwnDataSection />
       <ContextInjectionSection />
       <WhyFlowSection />
