@@ -145,10 +145,31 @@ export function DemoSection() {
         }
     }, [clearAllTimers, isPlaying])
 
+    const sectionRef = useRef<HTMLElement>(null)
+    const hasStartedRef = useRef(false)
+
     useEffect(() => {
-        playStep(0)
-        return clearAllTimers
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting && !hasStartedRef.current) {
+                    hasStartedRef.current = true
+                    playStep(0)
+                }
+            },
+            { threshold: 0.2 }
+        )
+
+        if (sectionRef.current) {
+            observer.observe(sectionRef.current)
+        }
+
+        return () => {
+            clearAllTimers()
+            if (sectionRef.current) {
+                observer.unobserve(sectionRef.current)
+            }
+        }
+    }, [playStep, clearAllTimers])
 
     const handleStepClick = (index: number) => {
         playStep(index)
@@ -175,7 +196,10 @@ export function DemoSection() {
     const step = STEPS[activeStep]
 
     return (
-        <section className="relative flex flex-col items-center border-b-4 border-primary bg-secondary/30 px-4 py-32 overflow-hidden">
+        <section
+            ref={sectionRef}
+            className="relative flex flex-col items-center border-b-4 border-primary bg-secondary/30 px-4 py-32 overflow-hidden"
+        >
             <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
 
             <div className="relative z-10 w-full max-w-5xl">
@@ -199,11 +223,10 @@ export function DemoSection() {
                             <button
                                 key={i}
                                 onClick={() => handleStepClick(i)}
-                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-mono text-xs uppercase tracking-widest transition-colors border-r-2 border-border last:border-r-0 ${
-                                    i === activeStep
-                                        ? "bg-primary text-primary-foreground"
-                                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                                }`}
+                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-mono text-xs uppercase tracking-widest transition-colors border-r-2 border-border last:border-r-0 ${i === activeStep
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                                    }`}
                             >
                                 <span className="hidden sm:inline">{i + 1}.</span>
                                 {s.label}
